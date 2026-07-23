@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crop Yield & Market Price Prediction Portal</title>
+  <meta name="description" content="AI-Powered Agricultural Intelligence Portal for Crop Yield Estimation and Commodity Price Forecasting.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Top Header -->
+    <header class="top-header">
+      <div class="brand-logo">
+        <div class="brand-icon">🌾</div>
+        <div>
+          <h1 class="brand-title">AgriPredict AI</h1>
+          <p class="brand-subtitle">Crop Yield & Market Price Prediction System</p>
+        </div>
+      </div>
+
+      <div id="server-status-badge" class="health-badge" style="display: none;">
+        <span class="pulse-dot"></span>
+        <span id="server-status-text">Connecting to Backend...</span>
+      </div>
+    </header>
+
+    <!-- Stats Overview Banner -->
+    <section class="stats-banner">
+      <div class="stat-card">
+        <div class="stat-icon-wrapper stat-icon-emerald">🌱</div>
+        <div class="stat-info">
+          <div id="stat-yield-status" class="stat-value">Active</div>
+          <div class="stat-label">Yield Model Engine</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-wrapper stat-icon-amber">📈</div>
+        <div class="stat-info">
+          <div id="stat-price-status" class="stat-value">Active</div>
+          <div class="stat-label">Price Forecast Engine</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-wrapper stat-icon-cyan">📚</div>
+        <div class="stat-info">
+          <div id="stat-records-count" class="stat-value">2,733</div>
+          <div class="stat-label">Historical Market Records</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-navigation">
+      <button class="tab-btn active" data-tab="tab-yield">
+        <span>🌾 Crop Yield Predictor</span>
+        <span class="tab-badge tab-badge-emerald">RandomForest</span>
+      </button>
+
+      <button class="tab-btn" data-tab="tab-price">
+        <span>📈 Market Price Forecast</span>
+        <span class="tab-badge tab-badge-amber">Lag Metrics</span>
+      </button>
+
+      <button class="tab-btn" data-tab="tab-analytics">
+        <span>📊 System Analytics</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: CROP YIELD PREDICTOR -->
+    <main id="tab-yield" class="tab-content active">
+      <div class="grid-two-columns">
+        
+        <!-- Input Form -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🌱 Farm Parameters</h2>
+            <p class="card-desc">Provide agricultural metrics to calculate estimated crop yield per acre.</p>
+          </div>
+
+          <form id="yield-form">
+            <div class="form-grid">
+              
+              <div class="form-group">
+                <label class="form-label" for="yield-crop">Target Crop</label>
+                <select id="yield-crop" class="form-control" required>
+                  <option value="">Loading crops...</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="yield-season">Farming Season</label>
+                <select id="yield-season" class="form-control" required>
+                  <option value="">Loading seasons...</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="yield-state">State / Region</label>
+                <select id="yield-state" class="form-control" required>
+                  <option value="">Loading states...</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="yield-district">District</label>
+                <select id="yield-district" class="form-control" required>
+                  <option value="">Select State first</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="yield-year">Crop Year</label>
+                <input type="number" id="yield-year" class="form-control" value="2024" min="2000" max="2030" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="yield-area">Cultivated Area (Acres)</label>
+                <input type="number" id="yield-area" class="form-control" step="0.1" value="10.0" min="0.1" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="yield-fertilizer">Fertilizer Used (kg)</label>
+                <input type="number" id="yield-fertilizer" class="form-control" step="0.1" value="850.0" min="0" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="yield-pesticide">Pesticide Used (kg)</label>
+                <input type="number" id="yield-pesticide" class="form-control" step="0.1" value="45.0" min="0" required>
+              </div>
+
+            </div>
+
+            <!-- Auto Rainfall Status Note -->
+            <div class="rainfall-info-badge" style="margin-top: 14px; margin-bottom: 16px; padding: 10px 14px; background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.2); border-radius: 8px; font-size: 0.82rem; color: #34d399; display: flex; align-items: center; gap: 8px;">
+              <span>🌧️</span>
+              <span>Rainfall data will be automatically determined based on the selected location.</span>
+            </div>
+
+            <button type="submit" id="yield-submit-btn" class="btn-submit btn-emerald">
+              <span>🚀 Predict Crop Yield</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Yield Result Card -->
+        <div class="card result-card">
+          <div class="card-header">
+            <h2 class="card-title">📊 Yield Estimate Output</h2>
+            <p class="card-desc">Machine learning output based on historical soil, rainfall, and crop features.</p>
+          </div>
+
+          <div id="yield-result-container" style="flex: 1;">
+            <div class="placeholder-box">
+              <div class="placeholder-icon">🌾</div>
+              <h3>No Calculation Performed</h3>
+              <p style="font-size: 0.85rem; margin-top: 6px;">Fill out farm parameters on the left and click Predict to view yield output.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- TAB 2: MARKET PRICE FORECAST -->
+    <main id="tab-price" class="tab-content">
+      <div class="grid-two-columns">
+        
+        <!-- Input Form -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📈 Mandi & Commodity Details</h2>
+            <p class="card-desc">Select state, district, market, and commodity for price trajectory analysis.</p>
+          </div>
+
+          <form id="price-form">
+            <div class="form-grid">
+              
+              <div class="form-group">
+                <label class="form-label" for="price-state">State</label>
+                <select id="price-state" class="form-control form-control-amber" required>
+                  <option value="">Select State</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="price-district">District</label>
+                <select id="price-district" class="form-control form-control-amber" required>
+                  <option value="">Select District</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="price-market">Market (Mandi)</label>
+                <select id="price-market" class="form-control form-control-amber" required>
+                  <option value="">Select Market</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="price-commodity">Commodity</label>
+                <select id="price-commodity" class="form-control form-control-amber" required>
+                  <option value="">Select Commodity</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="price-variety">Variety</label>
+                <select id="price-variety" class="form-control form-control-amber" required>
+                  <option value="">Select Variety</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="price-grade">Grade</label>
+                <select id="price-grade" class="form-control form-control-amber" required>
+                  <option value="">Select Grade</option>
+                </select>
+              </div>
+
+              <div class="form-group full-width">
+                <label class="form-label" for="price-date">Target Prediction Date</label>
+                <input type="date" id="price-date" class="form-control form-control-amber" required>
+              </div>
+
+            </div>
+
+            <button type="submit" id="price-submit-btn" class="btn-submit btn-amber">
+              <span>📈 Forecast Market Price</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Price Result Card -->
+        <div class="card result-card">
+          <div class="card-header">
+            <h2 class="card-title">💰 Forecast & Lag Analysis</h2>
+            <p class="card-desc">7-day rolling average and historical price trend projection.</p>
+          </div>
+
+          <div id="price-result-container" style="flex: 1;">
+            <div class="placeholder-box">
+              <div class="placeholder-icon">💹</div>
+              <h3>No Forecast Generated</h3>
+              <p style="font-size: 0.85rem; margin-top: 6px;">Select commodity and market parameters to generate market price forecast.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- TAB 3: SYSTEM ANALYTICS -->
+    <main id="tab-analytics" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">📊 System Architecture & Model Information</h2>
+          <p class="card-desc">Overview of backend algorithms, data pipelines, and REST API specification.</p>
+        </div>
+
+        <div class="form-grid" style="margin-top: 20px;">
+          <div class="metric-item" style="text-align: left; padding: 20px;">
+            <h3 style="color: #34d399; margin-bottom: 8px;">🌾 Crop Yield Model</h3>
+            <p style="font-size: 0.88rem; color: var(--text-muted);">
+              Uses a <strong>RandomForestRegressor</strong> pipeline with 200 decision trees. Features include OneHotEncoded categorical variables (Crop, Season, State) and numerical inputs (Area, Annual Rainfall, Fertilizer, Pesticide).
+            </p>
+          </div>
+
+          <div class="metric-item" style="text-align: left; padding: 20px;">
+            <h3 style="color: #fbbf24; margin-bottom: 8px;">📈 Crop Price Forecast Model</h3>
+            <p style="font-size: 0.88rem; color: var(--text-muted);">
+              Powered by a <strong>RandomForestRegressor</strong> combined with OrdinalEncoding and temporal lag features (`Price_Lag_1`, `Price_Lag_7`, and `Rolling_Mean_7`) derived from historical mandi arrival data.
+            </p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- JavaScript App Script -->
+  <script src="js/app.js"></script>
+</body>
+</html>

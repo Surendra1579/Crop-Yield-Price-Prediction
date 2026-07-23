@@ -1,0 +1,526 @@
+from pathlib import Path
+from datetime import date
+
+import joblib
+import pandas as pd
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+
+# =========================================================
+# PATHS
+# =========================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+YIELD_MODEL_PATH = BASE_DIR / "models" / "crop_yield_model.pkl"
+PRICE_MODEL_PATH = BASE_DIR / "models" / "crop_price_model.pkl"
+PRICE_DATA_PATH = BASE_DIR / "data" / "commodity_prices.csv"
+
+
+# =========================================================
+# CREATE FASTAPI APP
+# =========================================================
+
+app = FastAPI(
+    title="Crop Yield & Price Prediction API",
+    description="API for predicting crop yield and crop market prices",
+    version="1.0.0"
+)
+
+
+# =========================================================
+# CORS
+# =========================================================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# =========================================================
+# LOAD MODELS
+# =========================================================
+
+try:
+    yield_model = joblib.load(YIELD_MODEL_PATH)
+    print("Crop Yield Model loaded successfully!")
+except Exception as e:
+    print(f"Error loading Crop Yield Model: {e}")
+    yield_model = None
+
+
+try:
+    price_model = joblib.load(PRICE_MODEL_PATH)
+    print("Crop Price Model loaded successfully!")
+except Exception as e:
+    print(f"Error loading Crop Price Model: {e}")
+    price_model = None
+
+
+# =========================================================
+# LOAD HISTORICAL PRICE DATA
+# =========================================================
+
+try:
+    price_data = pd.read_csv(PRICE_DATA_PATH)
+
+    # Rename original dataset columns
+    price_data = price_data.rename(
+        columns={
+            "District Name": "District",
+            "Market Name": "Market",
+            "Min Price (Rs./Quintal)": "Min_Price",
+            "Max Price (Rs./Quintal)": "Max_Price",
+            "Modal Price (Rs./Quintal)": "Modal_Price",
+            "Price Date": "Arrival_Date",
+        }
+    )
+
+    # Remove unnecessary serial number
+    price_data = price_data.drop(
+        columns=["Sl no."],
+        errors="ignore"
+    )
+
+    # Convert date
+    price_data["Arrival_Date"] = pd.to_datetime(
+        price_data["Arrival_Date"],
+        dayfirst=True,
+        errors="coerce"
+    )
+
+    # Convert price to numeric
+    price_data["Modal_Price"] = pd.to_numeric(
+        price_data["Modal_Price"],
+        errors="coerce"
+    )
+
+    # Remove invalid rows
+    price_data = price_data.dropna(
+        subset=[
+            "Arrival_Date",
+            "Modal_Price"
+        ]
+    )
+
+    price_data = price_data[
+        price_data["Modal_Price"] > 0
+    ].copy()
+
+    # Sort historical data
+    price_data = price_data.sort_values(
+        "Arrival_Date"
+    ).reset_index(drop=True)
+
+    print(
+        f"Historical price data loaded successfully: "
+        f"{len(price_data)} rows"
+    )
+
+except Exception as e:
+    print(
+        f"Error loading historical price data: {e}"
+    )
+
+    price_data = pd.DataFrame()
+
+
+# =========================================================
+# INPUT MODELS
+# =========================================================
+
+class YieldInput(BaseModel):
+    Crop: str
+    Crop_Year: int
+    Season: str
+    State: str
+    Area: float
+    Annual_Rainfall: float
+    Fertilizer: float
+    Pesticide: float
+
+
+class PriceInput(BaseModel):
+    State: str
+    District: str
+    Market: str
+    Commodity: str
+    Variety: str
+    Grade: str
+    Prediction_Date: date
+
+
+# =========================================================
+# HOME
+# =========================================================
+
+@app.get("/")
+def home():
+
+    return {
+        "message": "Crop Yield & Price Prediction API is running",
+        "yield_model_loaded": yield_model is not None,
+        "price_model_loaded": price_model is not None,
+        "historical_price_rows": len(price_data)
+    }
+
+
+# =========================================================
+# HEALTH CHECK
+# =========================================================
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "healthy",
+        "yield_model": (
+            "loaded"
+            if yield_model is not None
+            else "not loaded"
+        ),
+        "price_model": (
+            "loaded"
+            if price_model is not None
+            else "not loaded"
+        ),
+        "price_data": (
+            "loaded"
+            if not price_data.empty
+            else "not loaded"
+        )
+    }
+
+
+# =========================================================
+# YIELD PREDICTION
+# =========================================================
+
+@app.post("/predict-yield")
+def predict_yield(data: YieldInput):
+
+    if yield_model is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Crop Yield Model is not loaded."
+        )
+
+    try:
+
+        input_data = pd.DataFrame(
+            [{
+                "Crop": data.Crop,
+                "Crop_Year": data.Crop_Year,
+                "Season": data.Season,
+                "State": data.State,
+                "Area": data.Area,
+                "Annual_Rainfall": data.Annual_Rainfall,
+                "Fertilizer": data.Fertilizer,
+                "Pesticide": data.Pesticide,
+            }]
+        )
+
+        prediction = yield_model.predict(
+            input_data
+        )[0]
+
+        return {
+            "success": True,
+            "predicted_yield": round(
+                float(prediction),
+                2
+            )
+        }
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Yield prediction failed: {str(e)}"
+        )
+
+
+# =========================================================
+# PRICE PREDICTION
+# =========================================================
+
+@app.post("/predict-price")
+def predict_price(data: PriceInput):
+
+    if price_model is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Crop Price Model is not loaded."
+        )
+
+    if price_data.empty:
+        raise HTTPException(
+            status_code=500,
+            detail="Historical price data is not loaded."
+        )
+
+    try:
+
+        # -----------------------------------------
+        # Filter historical data
+        # -----------------------------------------
+
+        filtered_data = price_data[
+            (
+                price_data["State"].astype(str)
+                == data.State
+            )
+            &
+            (
+                price_data["District"].astype(str)
+                == data.District
+            )
+            &
+            (
+                price_data["Market"].astype(str)
+                == data.Market
+            )
+            &
+            (
+                price_data["Commodity"].astype(str)
+                == data.Commodity
+            )
+            &
+            (
+                price_data["Variety"].astype(str)
+                == data.Variety
+            )
+        ].copy()
+
+        # Use only prices before prediction date
+        prediction_date = pd.Timestamp(
+            data.Prediction_Date
+        )
+
+        filtered_data = filtered_data[
+            filtered_data["Arrival_Date"]
+            < prediction_date
+        ]
+
+        filtered_data = filtered_data.sort_values(
+            "Arrival_Date"
+        )
+
+        # Need at least 7 previous observations
+        if len(filtered_data) < 7:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Not enough historical price data "
+                    "for this commodity and market. "
+                    "At least 7 previous price records "
+                    "are required."
+                )
+            )
+
+        # -----------------------------------------
+        # Calculate lag features
+        # -----------------------------------------
+
+        historical_prices = (
+            filtered_data["Modal_Price"]
+            .tail(7)
+            .tolist()
+        )
+
+        price_lag_1 = historical_prices[-1]
+
+        price_lag_7 = historical_prices[0]
+
+        rolling_mean_7 = sum(
+            historical_prices
+        ) / len(historical_prices)
+
+        # -----------------------------------------
+        # Date features
+        # -----------------------------------------
+
+        year = prediction_date.year
+        month = prediction_date.month
+        day = prediction_date.day
+        day_of_week = prediction_date.dayofweek
+
+        # -----------------------------------------
+        # Create model input
+        # -----------------------------------------
+
+        input_data = pd.DataFrame(
+            [{
+                "State": data.State,
+                "District": data.District,
+                "Market": data.Market,
+                "Commodity": data.Commodity,
+                "Variety": data.Variety,
+                "Grade": data.Grade,
+                "Year": year,
+                "Month": month,
+                "Day": day,
+                "DayOfWeek": day_of_week,
+                "Price_Lag_1": price_lag_1,
+                "Price_Lag_7": price_lag_7,
+                "Rolling_Mean_7": rolling_mean_7,
+            }]
+        )
+
+        # -----------------------------------------
+        # Predict
+        # -----------------------------------------
+
+        prediction = price_model.predict(
+            input_data
+        )[0]
+
+        return {
+            "success": True,
+
+            "commodity": data.Commodity,
+
+            "market": data.Market,
+
+            "prediction_date": str(
+                data.Prediction_Date
+            ),
+
+            "predicted_price": round(
+                float(prediction),
+                2
+            ),
+
+            "unit": "Rs./Quintal",
+
+            "historical_features": {
+                "previous_price": round(
+                    float(price_lag_1),
+                    2
+                ),
+                "seventh_previous_price": round(
+                    float(price_lag_7),
+                    2
+                ),
+                "seven_price_average": round(
+                    float(rolling_mean_7),
+                    2
+                )
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Price prediction failed: {str(e)}"
+        )
+
+
+# =========================================================
+# GET STATES
+# =========================================================
+
+@app.get("/states")
+def get_states():
+
+    if price_data.empty:
+        return []
+
+    states = sorted(
+        price_data["State"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    return states
+
+
+# =========================================================
+# GET DISTRICTS
+# =========================================================
+
+@app.get("/districts/{state}")
+def get_districts(state: str):
+
+    filtered = price_data[
+        price_data["State"].astype(str)
+        == state
+    ]
+
+    districts = sorted(
+        filtered["District"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    return districts
+
+
+# =========================================================
+# GET MARKETS
+# =========================================================
+
+@app.get("/markets/{state}/{district}")
+def get_markets(
+    state: str,
+    district: str
+):
+
+    filtered = price_data[
+        (
+            price_data["State"].astype(str)
+            == state
+        )
+        &
+        (
+            price_data["District"].astype(str)
+            == district
+        )
+    ]
+
+    markets = sorted(
+        filtered["Market"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    return markets
+
+
+# =========================================================
+# GET COMMODITIES
+# =========================================================
+
+@app.get("/commodities")
+def get_commodities():
+
+    if price_data.empty:
+        return []
+
+    commodities = sorted(
+        price_data["Commodity"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    return commodities
